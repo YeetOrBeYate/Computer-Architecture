@@ -1,10 +1,10 @@
 """CPU functionality."""
-
 import sys
 
 LDI = 0b10000010
 PRN = 0b01000111
 HLT = 0b00000001
+MUL = 0b10100010
 
 
 class CPU:
@@ -15,23 +15,29 @@ class CPU:
         self.pc = 0
         self.ram = [0] * 256
         self.reg = [0] * 8
+        self.instruction = {LDI: self.ldi, PRN: self.prn, MUL: self.mul, HLT: self.hlt}
 
     def load(self):
         """Load a program into memory."""
+        program = []
+        try:
+            with open(sys.argv[1]) as f:
+                for line in f:
+                    string_val = line.split('#')[0].strip()
+                    if string_val == '':
+                        continue
+                    v = int(string_val, 2)
+                    program = program + [v]
+        except FileNotFoundError:
+            print('File Not Found')
+            exit(1)
+        except IndexError:
+            print('You need to specify the file to run.')
+            exit(1)
 
         address = 0
 
         # For now, we've just hardcoded a program:
-
-        program = [
-            # From print8.ls8
-            LDI,  # LDI R0,8
-            0b00000000,
-            0b00001000,
-            PRN,  # PRN R0
-            0b00000000,
-            HLT,  # HLT
-        ]
 
         for instruction in program:
             self.ram[address] = instruction
@@ -42,9 +48,16 @@ class CPU:
 
         if op == "ADD":
             self.reg[reg_a] += self.reg[reg_b]
+        elif op == "MUL":
+            self.reg[reg_a] = self.reg[reg_a] * self.reg[reg_b]
         # elif op == "SUB": etc
         else:
             raise Exception("Unsupported ALU operation")
+
+    def get_arg_count(self, value, comparision=0b11000000):
+        x = value & comparision
+        x = x >> 6
+        return x
 
     def trace(self):
         """
@@ -66,34 +79,34 @@ class CPU:
 
         print()
 
-    def ram_read(self, mar):
-        return self.ram[mar]
+    def ram_read(self, address):
+        return self.reg[address]
 
-    def ram_write(self, mdr, mar):
-        self.ram[mar] = mdr
+    def ram_write(self, address, value):
+        self.reg[address] = value
+
+    def ldi(self):
+        address = self.ram[self.pc + 1]
+        value = self.ram[self.pc + 2]
+        self.ram_write(address, value)
+        count = self.get_arg_count(LDI)
+        self.pc += count + 1
+
+    def prn(self):
+        address = self.ram[self.pc + 1]
+        print(self.ram_read(address))
+        count = self.get_arg_count(PRN)
+        self.pc += count + 1
+
+    def mul(self):
+        self.alu('MUL', self.ram[self.pc + 1], self.ram[self.pc + 2])
+        self.pc += self.get_arg_count(MUL) + 1
+
+    def hlt(self):
+        exit(0)
 
     def run(self):
         """Run the CPU."""
-        halt = False
-
-        while not halt:
-            instruction = self.ram[self.pc]
-
-            if instruction == LDI:
-                reg_num = self.ram_read(self.pc + 1)
-                value = self.ram_read(self.pc + 2)
-                self.reg[reg_num] = value
-                self.pc += 3
-            elif instruction == PRN:
-                reg_num = self.ram_read(self.pc + 1)
-                print(self.reg[reg_num])
-                self.pc += 2
-            elif instruction == HLT:
-                sys.exit(0)
-            else:
-                print("Unknown instruction")
-                sys.exit(1)
-
-yeet = CPU()
-
-yeet.trace()
+        run = True
+        while run:
+            self.instruction[self.ram[self.pc]]()
